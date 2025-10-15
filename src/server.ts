@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { config } from './config.js';
 import { registerRoutes } from './routes.js';
+import { registerMetricsRoute } from './metrics.js';
 import { disconnectClient } from './xrplClient.js';
 
 const app = Fastify({
@@ -12,7 +13,37 @@ await app.register(cors, {
   origin: true,
 });
 
+// API key (optional)
+app.addHook("onRequest", async (req, reply) => {
+  const required = process.env.API_KEY;
+  if (!required) return;
+  if (req.url === '/metrics' || req.url === '/health') return; // Skip auth for metrics/health
+  if (req.headers["x-api-key"] !== required) {
+    reply.code(401);
+    throw new Error("Unauthorized");
+  }
+});
+
+// Naïve per-IP rate limit (MVP): 120/min
+const hits = new Map<string, { n: number; ts: number }>();
+app.addHook("onRequest", (req, reply) => {
+  const ip = req.ip ?? "unknown";
+  const now = Date.now();
+  const rec = hits.get(ip) ?? { n: 0, ts: now };
+  if (now - rec.ts > 60_000) {
+    rec.n = 0;
+    rec.ts = now;
+  }
+  rec.n++;
+  hits.set(ip, rec);
+  if (rec.n > 120) {
+    reply.code(429);
+    throw new Error("Rate limit exceeded: 120 req/min");
+  }
+});
+
 await registerRoutes(app);
+await registerMetricsRoute(app);
 
 const shutdown = async () => {
   console.log('Shutting down gracefully...');

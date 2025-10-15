@@ -1,0 +1,396 @@
+Goals (must-haves)
+
+Hard slippage enforcement (on-ledger): For Payment-based swaps, use SendMax (exact-in), add DeliverMin, and set tfPartialPayment.
+
+“Never worse than native” fee model: Compare our best route vs XRPL native pathfinder; charge a dynamic routing fee (1–5 bps by default) from the improvement only, ensuring net_out ≥ native_out after fees. If not possible, reduce/zero the fee automatically.
+
+Native compare status: Always return a native_comparison object: either { native_expected_out, improvement_bps, fee_bps_applied } or { status: "no_path" | "account_missing_trust" | "unavailable", reason }.
+
+Input safety rails: Validate assets (XRP has no issuer; IOUs require issuer), ripple address format, and clamp amount (0 < amount ≤ 1e9).
+
+Auth + rate limits (MVP): Optional API key via x-api-key (enabled if API_KEY is set). Naïve per-IP limit: 120 req/min.
+
+Metrics endpoint: Expose /metrics (Prometheus text) with:
+
+orren_quote_latency_ms (histogram or basic buckets),
+
+orren_cache_hit_ratio (if you track cache),
+
+orren_native_win_ratio (% of quotes where net_out ≥ native_out),
+
+orren_improvement_bps_median (rolling).
+
+Docs parity: Update README snippets to show DeliverMin + tfPartialPayment, routing_fee_bps, and the native_comparison status block.
+
+Reuse any existing “native pathfinder compare” helper you already have. If none exists, add a minimal ripple_path_find client.
+
+Step 1 — Utilities
+A) Create src/utils/validation.ts
+import { z } from "zod";
+
+export const rippleAddr = /^r[1-9A-HJ-NP-Za-km-z]{25,35}$/;
+
+export const currencySchema = z.object({
+  currency: z.string().min(3).max(160),
+  issuer: z.string().regex(rippleAddr).optional()
+}).refine(c => (c.currency === "XRP" ? !c.issuer : !!c.issuer), {
+  message: "XRP must not have issuer; IOUs must include issuer"
+});
+
+export function safeAmount(s: string, max = 1e9): number {
+  const n = Number(s);
+  if (!Number.isFinite(n) || n <= 0 || n > max) throw new Error("amount out of range");
+  return n;
+}
+
+B) Create src/utils/fees.ts
+export type FeeParams = { gross: number; native?: number; alpha?: number; min_bps?: number; cap_bps?: number };
+
+/**
+ * Compute dynamic routing fee from improvement, with guarantee that net >= native.
+ * Returns { fee_bps, net }.
+ */
+export function computeFeeWithGuarantee(p: FeeParams): { fee_bps: number; net: number; improvement_bps?: number } {
+  const { gross, native, alpha = 0.5, min_bps = 1, cap_bps = 5 } = p;
+  if (!native || native <= 0 || !Number.isFinite(native)) {
+    const fee_bps = Math.max(0, Math.min(cap_bps, min_bps));
+    const net = gross * (1 - fee_bps / 10_000);
+    return { fee_bps, net };
+  }
+  const improvement_bps = Math.max(0, 10_000 * (gross / native - 1));
+  let fee_bps = Math.min(cap_bps, Math.max(min_bps, Math.floor(improvement_bps * alpha)));
+  let net = gross * (1 - fee_bps / 10_000);
+
+  if (net < native) {
+    const needed = Math.ceil(10_000 * (1 - native / gross)); // bps needed to equal native
+    fee_bps = Math.max(0, Math.min(fee_bps, Math.max(0, needed)));
+    net = gross * (1 - fee_bps / 10_000);
+  }
+  if (net < native) { // still worse? no fee.
+    fee_bps = 0;
+    net = gross;
+  }
+  return { fee_bps, net, improvement_bps };
+}
+
+C) Create src/metrics.ts
+import { FastifyInstance } from "fastify";
+
+let quotesTotal = 0;
+let winsTotal = 0;
+let latencies: number[] = [];
+let improvements: number[] = [];
+
+/** recorders */
+export function recordQuoteLatency(ms: number) { latencies.push(ms); if (latencies.length > 2000) latencies.shift(); }
+export function recordWin(netOut: number, nativeOut?: number) {
+  quotesTotal++;
+  if (nativeOut && netOut >= nativeOut) winsTotal++;
+}
+export function recordImprovement(bps?: number) {
+  if (bps !== undefined && Number.isFinite(bps)) {
+    improvements.push(bps);
+    if (improvements.length > 2000) improvements.shift();
+  }
+}
+
+function median(a: number[]) {
+  if (a.length === 0) return 0;
+  const b = [...a].sort((x,y)=>x-y);
+  const mid = Math.floor(b.length/2);
+  return b.length%2 ? b[mid] : (b[mid-1]+b[mid])/2;
+}
+
+export async function registerMetricsRoute(app: FastifyInstance) {
+  app.get("/metrics", async (req, reply) => {
+    const hitRatio = 0; // plug your cache stats here if you track them
+    const winRatio = quotesTotal ? winsTotal / quotesTotal : 0;
+    const medLatency = median(latencies);
+    const medImprovement = median(improvements);
+
+    const lines = [
+      `# HELP orren_quote_latency_ms Median quote latency`,
+      `# TYPE orren_quote_latency_ms gauge`,
+      `orren_quote_latency_ms ${medLatency}`,
+      `# HELP orren_cache_hit_ratio Cache hit ratio`,
+      `# TYPE orren_cache_hit_ratio gauge`,
+      `orren_cache_hit_ratio ${hitRatio}`,
+      `# HELP orren_native_win_ratio Fraction of quotes where net_out >= native_out`,
+      `# TYPE orren_native_win_ratio gauge`,
+      `orren_native_win_ratio ${winRatio}`,
+      `# HELP orren_improvement_bps_median Median improvement in bps (gross)`,
+      `# TYPE orren_improvement_bps_median gauge`,
+      `orren_improvement_bps_median ${medImprovement}`
+    ];
+    reply.header("content-type", "text/plain");
+    return lines.join("\n") + "\n";
+  });
+}
+
+Step 2 — Build TX: DeliverMin + tfPartialPayment
+
+Edit src/buildTx.ts to add helpers and support DeliverMin for exact-in:
+
+import type { Currency } from "./types.js";
+import { xrpToDrops, isoTimeToRippleTime } from "xrpl";
+
+function isXRP(c: Currency) { return c.currency === "XRP"; }
+
+export function buildPaymentTx(params: {
+  account: string;
+  destination: string;         // user/counterparty account, NOT AMM
+  amountOut: string;           // target out amount (string)
+  minOut?: string;             // DeliverMin post-fee
+  currency: Currency;          // out currency
+  expirationSeconds?: number;
+  exactInSendMaxDrops?: string; // optional exact-in cap in drops or IOU.value if you extend
+}) {
+  const { account, destination, amountOut, currency, expirationSeconds = 120, minOut, exactInSendMaxDrops } = params;
+
+  const common: any = {
+    TransactionType: "Payment",
+    Account: account,
+    Destination: destination,
+    Flags: 2147483648 // tfFullyCanonicalSig
+  };
+
+  // Exact-in: add tfPartialPayment + SendMax + DeliverMin
+  if (exactInSendMaxDrops) {
+    common.Flags |= 0x00020000; // tfPartialPayment
+    common.SendMax = exactInSendMaxDrops; // drops for XRP; extend to IOU if needed
+    if (minOut) {
+      common.DeliverMin = isXRP(currency)
+        ? xrpToDrops(minOut)
+        : { currency: currency.currency, issuer: currency.issuer!, value: minOut };
+    }
+  }
+
+  // Amount (what recipient receives)
+  if (isXRP(currency)) {
+    common.Amount = xrpToDrops(amountOut);
+  } else {
+    common.Amount = { currency: currency.currency, issuer: currency.issuer!, value: amountOut };
+  }
+
+  const expUnix = Math.floor(Date.now() / 1000) + expirationSeconds;
+  common.Expiration = isoTimeToRippleTime(new Date(expUnix * 1000).toISOString());
+  return common;
+}
+
+Step 3 — Routing & API surface
+
+Edit src/routes.ts:
+
+Validate inputs with currencySchema and safeAmount.
+
+Accept both {from,to} and {source_asset,destination_asset}.
+
+After computing our orren_gross_out, call existing native compare helper (whatever it’s named in your repo). If none, stub getNativeExpectedOut(...) to return { expected_out?: number, status?: string, reason?: string }.
+
+Apply the fee with guarantee (computeFeeWithGuarantee).
+
+Return native_comparison object always.
+
+Add /build-tx that sets DeliverMin + tfPartialPayment when mode:"exact_in" (default).
+
+Replace the whole file content with this shape and adapt your existing imports as needed:
+
+import { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { currencySchema, rippleAddr, safeAmount } from "./utils/validation.js";
+import { computeFeeWithGuarantee } from "./utils/fees.js";
+import { bestQuote } from "./quotes/index.js";
+import { buildPaymentTx } from "./buildTx.js";
+import { recordQuoteLatency, recordWin, recordImprovement } from "./metrics.js";
+
+const addrSchema = z.string().regex(rippleAddr);
+
+function normalizeAssets(body: any) {
+  const from = body.from ?? body.source_asset;
+  const to = body.to ?? body.destination_asset;
+  if (!from || !to) throw new Error("Missing asset fields: from/to or source_asset/destination_asset");
+  return { from, to };
+}
+
+// TODO: Replace with your existing native compare function if present.
+async function getNativeExpectedOut(params: {
+  user_address?: string;
+  inCur: any; outCur: any; amountIn: number;
+}): Promise<{ expected_out?: number; status?: "ok"|"no_path"|"account_missing_trust"|"unavailable"; reason?: string }> {
+  try {
+    // If you already have a helper, CALL IT here and map the result.
+    // Otherwise, return unavailable to keep API stable.
+    return { status: "unavailable", reason: "native compare not wired in this stub" };
+  } catch (e: any) {
+    return { status: "unavailable", reason: e?.message || "error" };
+  }
+}
+
+export async function registerRoutes(app: FastifyInstance) {
+  app.get("/health", async () => ({ ok: true, ts: new Date().toISOString() }));
+
+  app.post("/quote", async (req) => {
+    const t0 = Date.now();
+    const schema = z.object({
+      from: currencySchema.optional(),
+      to: currencySchema.optional(),
+      source_asset: currencySchema.optional(),
+      destination_asset: currencySchema.optional(),
+      amount: z.string(),
+      policy: z.any().optional(),
+      user_address: addrSchema.optional()
+    });
+    const body = schema.parse(req.body);
+    const { from, to } = normalizeAssets(body);
+    const amountIn = safeAmount(body.amount);
+
+    // Our engine
+    const q = await bestQuote({ inCur: from, outCur: to, amountIn, policy: body.policy });
+    const orrenGross = Number(q.expected_out);
+
+    // Native compare
+    const native = await getNativeExpectedOut({ user_address: body.user_address, inCur: from, outCur: to, amountIn });
+    const nativeOut = native.expected_out;
+
+    // Fees with guarantee
+    const { fee_bps, net, improvement_bps } = computeFeeWithGuarantee({ gross: orrenGross, native: nativeOut });
+
+    // Update response
+    const minOut = net * 0.995;
+    q.expected_out = String(net);
+    q.min_out = String(minOut);
+    q.fees = { ...(q.fees || {}), routing_fee_bps: fee_bps };
+
+    q.native_comparison = nativeOut !== undefined
+      ? {
+          native_expected_out: nativeOut,
+          improvement_bps: improvement_bps ?? 0,
+          fee_bps_applied: fee_bps,
+          guarantee: "net>=native"
+        }
+      : {
+          status: native.status ?? "unavailable",
+          reason: native.reason
+        };
+
+    recordQuoteLatency(Date.now() - t0);
+    recordWin(net, nativeOut);
+    recordImprovement(improvement_bps);
+
+    return q;
+  });
+
+  app.post("/build-tx", async (req) => {
+    const schema = z.object({
+      source_asset: currencySchema,
+      destination_asset: currencySchema,
+      amount: z.string(),
+      user_address: addrSchema,
+      destination_address: addrSchema.optional(),
+      min_out: z.string().optional(),
+      mode: z.enum(["exact_in","exact_out"]).optional(), // default exact_in
+    });
+    const body = schema.parse(req.body);
+    const amt = safeAmount(body.amount);
+    const mode = body.mode ?? "exact_in";
+
+    // For MVP we'll treat destination as self unless provided
+    const destination = body.destination_address ?? body.user_address;
+
+    // exact_in: we cap with SendMax and enforce DeliverMin
+    const exactInSendMaxDrops = mode === "exact_in" && body.source_asset.currency === "XRP"
+      ? String(Math.floor(amt * 1_000_000)) // drops
+      : undefined; // (extend to IOUs later)
+
+    const tx = buildPaymentTx({
+      account: body.user_address,
+      destination,
+      amountOut: String(amt),
+      minOut: body.min_out,
+      currency: body.destination_asset,
+      exactInSendMaxDrops
+    });
+
+    return { txJSON: tx };
+  });
+}
+
+Step 4 — Server auth, rate limits, metrics
+
+Edit src/server.ts to add:
+
+API key hook,
+
+Naïve per-IP rate limit (120 req/min),
+
+Register /metrics.
+
+import Fastify from "fastify";
+import cors from "fastify-cors";
+import { CONFIG } from "./config.js";
+import { registerRoutes } from "./routes.js";
+import { registerMetricsRoute } from "./metrics.js";
+
+const app = Fastify({ logger: true });
+app.register(cors, { origin: true });
+
+// API key (optional)
+app.addHook("onRequest", async (req, reply) => {
+  const required = process.env.API_KEY;
+  if (!required) return;
+  if (req.headers["x-api-key"] !== required) {
+    reply.code(401); throw new Error("Unauthorized");
+  }
+});
+
+// Naïve per-IP rate limit (MVP): 120/min
+const hits = new Map<string, { n: number; ts: number }>();
+app.addHook("onRequest", (req, reply) => {
+  const ip = req.ip ?? "unknown";
+  const now = Date.now();
+  const rec = hits.get(ip) ?? { n: 0, ts: now };
+  if (now - rec.ts > 60_000) { rec.n = 0; rec.ts = now; }
+  if (++rec.n > 120) { reply.code(429); throw new Error("Rate limit"); }
+  hits.set(ip, rec);
+});
+
+await registerRoutes(app);
+await registerMetricsRoute(app);
+
+app.listen({ port: CONFIG.PORT, host: "0.0.0.0" }).then(() => {
+  app.log.info(`Orren API listening on :${CONFIG.PORT}`);
+});
+
+Step 5 — README tweaks (summarize for AI)
+
+In /build-tx examples, show Flags: tfPartialPayment, SendMax (exact-in), and DeliverMin matching min_out.
+
+In /quote response, document:
+
+fees.routing_fee_bps
+
+native_comparison block (either the numeric improvement form or the status fallback).
+
+Add /metrics endpoint description and the four metrics exposed.
+
+Add a note on API_KEY and x-api-key header.
+
+Note rate limits (120 req/min per IP) in MVP.
+
+Acceptance tests
+
+/quote returns expected_out (after fee) and min_out with a value slightly lower (0.5% buffer).
+
+/quote always contains native_comparison (either data or a status object).
+
+If native_expected_out is present, then expected_out ≥ native_expected_out in responses (unless improvement was negative and fee zeroed).
+
+/build-tx uses tfPartialPayment when exact-in and includes DeliverMin when min_out provided.
+
+/metrics returns Prometheus text.
+
+Setting API_KEY requires x-api-key or returns 401.
+
+Rate limiting kicks in after ~120 requests/min/IP with 429.
+
+Keep everything TypeScript-strict and consistent with the current project style. If any imports differ in this code vs repo structure, adapt paths accordingly
