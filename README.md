@@ -11,7 +11,8 @@ A production-ready Fastify API server for XRPL routing that **beats the native X
 - **🎯 Multi-Route Quoting**: Fetches quotes from AMM pools, order books, XRP bridges, and hybrid routes simultaneously
 - **🛡️ Slippage Protection**: Supports `min_out` and `slippage_bps` parameters with DeliverMin and tfFillOrKill patterns
 - **🌉 Cross-Chain Ready**: Stub integrations for Axelar and Wormhole cross-chain bridges (ready for production integration)
-- **📈 Native Comparison**: Feature-flagged comparison to XRPL's native pathfinder, showing basis point savings
+- **💰 Dynamic Fee Model**: "Always ≥ native" pricing - charges a share of improvement over native pathfinder, guarantees users never pay more than native rates
+- **📈 Native Comparison**: Attempts comparison to XRPL's native pathfinder when user_address is provided (subject to XRPL API constraints)
 - **⚡ Smart Scoring**: Deterministic algorithm considers output amount, trust tier, and latency to pick the best route
 - **💾 In-Memory Caching**: LRU cache with 5-second TTL for improved performance
 - **🔧 Transaction Building**: Generates ready-to-sign XRPL transactions (single or multi-leg arrays)
@@ -315,6 +316,89 @@ XRPL Payment transactions use three fields together for slippage protection:
 - **Routing**: XRPL's liquidity engine automatically routes through AMM pools and order books via internal Paths - you don't specify the routing venues in the transaction
 
 **Note:** XRP amounts are formatted as strings in drops (1 XRP = 1,000,000 drops), while issued currencies use `{currency, issuer, value}` objects. Multi-leg routes return an array of transactions that must be executed in sequence.
+
+## Dynamic Fee Model: "Always ≥ Native"
+
+Orren uses a value-based pricing model that guarantees you **always** get at least the native XRPL pathfinder rate, while charging a share of the improvement.
+
+### The Contract
+
+**For every quote with `user_address`:**
+
+1. **Compute native output** via XRPL's `ripple_path_find`
+2. **Compute Orren gross output** via our routing engine (AMM/CLOB/hybrid/bridges)
+3. **Calculate improvement:**
+   ```
+   improvement_bps = 10,000 × (orren_gross_out / native_out - 1)
+   ```
+
+4. **Charge dynamic fee** (share of improvement with caps):
+   ```
+   fee_bps = clamp(
+     min(floor(improvement_bps × α), cap_bps),
+     min_bps,
+     cap_bps
+   )
+   ```
+   Default: α = 0.5 (50% share), min_bps = 1, cap_bps = 5
+
+5. **Final deliverable:**
+   ```
+   orren_net_out = orren_gross_out × (1 - fee_bps/10,000)
+   ```
+
+6. **Guarantee:** `orren_net_out ≥ native_out` (if not, fee_bps = 0)
+
+### Fee Configuration
+
+Configure via environment variables:
+- `FEE_ALPHA=0.5` - Share of improvement (0.0 to 1.0)
+- `FEE_MIN_BPS=1` - Minimum fee in basis points
+- `FEE_CAP_BPS=5` - Maximum fee in basis points (5 bps = 0.05%)
+
+### Example: Dynamic Fee Calculation
+
+**Scenario:** USD → EUR swap with native yielding 100 EUR, Orren finding 120 EUR
+
+```javascript
+// Calculate improvement
+improvement_bps = 10,000 × (120 / 100 - 1) = 2,000 bps (20%)
+
+// Calculate fee (α = 0.5, cap = 5)
+fee_bps = clamp(floor(2000 × 0.5), 1, 5) = 5 bps
+
+// Apply fee
+orren_net_out = 120 × (1 - 5/10,000) = 119.94 EUR
+
+// Verify guarantee
+119.94 >= 100 ✓ (User saves 19.94 EUR, Orren earns 0.06 EUR)
+```
+
+### Response Format with Pricing
+
+When `user_address` is provided, quotes include a `pricing` object:
+
+```json
+{
+  "quotes": [{
+    "expected_out": "119.94",
+    "pricing": {
+      "gross_out": "120.00",
+      "fee_bps": 5,
+      "net_out": "119.94",
+      "native_out": "100.00",
+      "improvement_bps": "2000.00"
+    }
+  }]
+}
+```
+
+**Important Limitation:** Due to XRPL API constraints, `ripple_path_find` cannot compare self-swaps (when the transaction is from/to the same account). When native comparison is unavailable:
+- The `pricing` object is **omitted** from the response
+- No fees are charged (the contract guarantee cannot be verified)
+- Quotes show gross output without fee adjustments
+
+To enable the "Always ≥ native" fee model, requests must use different source and destination accounts with proper trust lines.
 
 ## Route Types
 

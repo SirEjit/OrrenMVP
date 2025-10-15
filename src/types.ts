@@ -32,6 +32,13 @@ export interface QuoteResponse {
     improvement_bps: string;
     improvement_percent: string;
   };
+  pricing?: {
+    gross_out: string;
+    fee_bps: number;
+    net_out: string;
+    native_out: string;
+    improvement_bps: string;
+  };
 }
 
 export interface CacheEntry<T> {

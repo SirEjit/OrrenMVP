@@ -4,6 +4,7 @@ import { buildTransaction } from './buildTx.js';
 import { compareToNative } from './nativeComparison.js';
 import { QuoteRequest } from './types.js';
 import { config } from './config.js';
+import { calculateDynamicFee, getFeeConfig } from './fees.js';
 
 export async function registerRoutes(app: FastifyInstance) {
   app.get('/health', async () => {
@@ -28,7 +29,7 @@ export async function registerRoutes(app: FastifyInstance) {
         });
       }
 
-      if (config.features.nativeComparison && user_address && quotes.length > 0) {
+      if (user_address && quotes.length > 0) {
         const comparison = await compareToNative(
           source_asset,
           destination_asset,
@@ -38,6 +39,22 @@ export async function registerRoutes(app: FastifyInstance) {
         );
         if (comparison) {
           quotes[0].native_comparison = comparison;
+          
+          const feeResult = calculateDynamicFee(
+            quotes[0].expected_out,
+            comparison.native_expected_out,
+            getFeeConfig()
+          );
+          
+          quotes[0].pricing = {
+            gross_out: feeResult.gross_out,
+            fee_bps: feeResult.fee_bps,
+            net_out: feeResult.net_out,
+            native_out: feeResult.native_out,
+            improvement_bps: feeResult.improvement_bps,
+          };
+          
+          quotes[0].expected_out = feeResult.net_out;
         }
       }
 
@@ -74,17 +91,31 @@ export async function registerRoutes(app: FastifyInstance) {
         });
       }
 
-      if (config.features.nativeComparison) {
-        const comparison = await compareToNative(
-          source_asset,
-          destination_asset,
-          amount,
-          bestQuote,
-          user_address
+      const comparison = await compareToNative(
+        source_asset,
+        destination_asset,
+        amount,
+        bestQuote,
+        user_address
+      );
+      if (comparison) {
+        bestQuote.native_comparison = comparison;
+        
+        const feeResult = calculateDynamicFee(
+          bestQuote.expected_out,
+          comparison.native_expected_out,
+          getFeeConfig()
         );
-        if (comparison) {
-          bestQuote.native_comparison = comparison;
-        }
+        
+        bestQuote.pricing = {
+          gross_out: feeResult.gross_out,
+          fee_bps: feeResult.fee_bps,
+          net_out: feeResult.net_out,
+          native_out: feeResult.native_out,
+          improvement_bps: feeResult.improvement_bps,
+        };
+        
+        bestQuote.expected_out = feeResult.net_out;
       }
 
       const tx = buildTransaction(

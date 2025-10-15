@@ -12,6 +12,16 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### October 15, 2025 - Dynamic Fee Model: "Always ≥ Native" (V4)
+- **💰 Value-Based Pricing**: Implemented dynamic fee system that guarantees users always get ≥ native pathfinder rates
+  - Calculates improvement_bps = 10,000 × (orren_gross / native - 1)
+  - Charges fee_bps = clamp(floor(improvement × α), min, cap) where α=0.5 (50% share), cap=5 bps
+  - Final net_out = gross × (1 - fee/10,000), guaranteed ≥ native_out
+- **📊 Pricing Object**: Quotes with user_address include pricing breakdown (gross_out, fee_bps, net_out, native_out, improvement_bps) when native comparison succeeds; omitted when unavailable
+- **🔧 Fee Configuration**: Environment variables FEE_ALPHA, FEE_MIN_BPS, FEE_CAP_BPS for customizable fee parameters
+- **🛡️ Graceful Fallbacks**: When native comparison unavailable (XRPL API limitations for self-swaps), pricing object omitted (no fees charged, no contract claims)
+- **📚 Documentation**: Comprehensive fee model explanation with calculation examples and contract guarantee
+
 ### October 15, 2025 - Exact-In/Exact-Out Mode & Documentation Polish (V3.2)
 - **🔄 Transaction Mode Toggle**: Added `mode` parameter to /build-tx endpoint supporting "exact_in" (default) and "exact_out"
   - exact_in: SendMax = input amount (exact), DeliverMin = output - slippage
