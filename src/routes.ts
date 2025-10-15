@@ -71,10 +71,20 @@ export async function registerRoutes(app: FastifyInstance) {
   });
 
   app.post<{
-    Body: QuoteRequest & { user_address: string; min_out?: string; slippage_bps?: number; mode?: 'exact_in' | 'exact_out' };
+    Body: QuoteRequest & { 
+      user_address: string; 
+      min_out?: string; 
+      slippage_bps?: number; 
+      mode?: 'exact_in' | 'exact_out';
+      pricing?: {
+        gross_out: string;
+        fee_bps: number;
+        net_out: string;
+      };
+    };
   }>('/build-tx', async (request, reply) => {
     try {
-      const { source_asset, destination_asset, amount, user_address, min_out, slippage_bps, mode } = request.body;
+      const { source_asset, destination_asset, amount, user_address, min_out, slippage_bps, mode, pricing } = request.body;
 
       if (!source_asset || !destination_asset || !amount || !user_address) {
         return reply.status(400).send({
@@ -94,42 +104,60 @@ export async function registerRoutes(app: FastifyInstance) {
         });
       }
 
-      const comparison = await compareToNative(
-        source_asset,
-        destination_asset,
-        amount,
-        bestQuote,
-        user_address
-      );
-      
       let feeInfo;
-      if (comparison) {
+      
+      if (pricing) {
+        feeInfo = {
+          gross_out: pricing.gross_out,
+          fee_bps: pricing.fee_bps,
+          net_out: pricing.net_out,
+        };
         bestQuote.source = 'ORREN';
         bestQuote.guarantee = 'available';
-        bestQuote.native_comparison = comparison;
-        
-        const feeResult = calculateDynamicFee(
-          bestQuote.expected_out,
-          comparison.native_expected_out,
-          getFeeConfig()
-        );
-        
         bestQuote.pricing = {
-          gross_out: feeResult.gross_out,
-          fee_bps: feeResult.fee_bps,
-          net_out: feeResult.net_out,
-          native_out: feeResult.native_out,
-          improvement_bps: feeResult.improvement_bps,
-        };
-        
-        feeInfo = {
-          gross_out: feeResult.gross_out,
-          fee_bps: feeResult.fee_bps,
-          net_out: feeResult.net_out,
+          gross_out: pricing.gross_out,
+          fee_bps: pricing.fee_bps,
+          net_out: pricing.net_out,
+          native_out: 'preserved_from_quote',
+          improvement_bps: 'preserved_from_quote',
         };
       } else {
-        bestQuote.source = 'MOCK';
-        bestQuote.guarantee = 'unavailable';
+        const comparison = await compareToNative(
+          source_asset,
+          destination_asset,
+          amount,
+          bestQuote,
+          user_address
+        );
+        
+        if (comparison) {
+          bestQuote.source = 'ORREN';
+          bestQuote.guarantee = 'available';
+          bestQuote.native_comparison = comparison;
+          
+          const feeResult = calculateDynamicFee(
+            bestQuote.expected_out,
+            comparison.native_expected_out,
+            getFeeConfig()
+          );
+          
+          bestQuote.pricing = {
+            gross_out: feeResult.gross_out,
+            fee_bps: feeResult.fee_bps,
+            net_out: feeResult.net_out,
+            native_out: feeResult.native_out,
+            improvement_bps: feeResult.improvement_bps,
+          };
+          
+          feeInfo = {
+            gross_out: feeResult.gross_out,
+            fee_bps: feeResult.fee_bps,
+            net_out: feeResult.net_out,
+          };
+        } else {
+          bestQuote.source = 'MOCK';
+          bestQuote.guarantee = 'unavailable';
+        }
       }
 
       const tx = buildTransaction(

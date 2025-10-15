@@ -385,6 +385,26 @@ Orren uses a **dual-transaction approach** for transparent, on-chain fee collect
 
 Both transactions are returned as an array and signed together in a single UX step.
 
+**Workflow for consistent fee collection:**
+1. Call `/quote` with `user_address` to get pricing information
+2. If response includes `pricing` object, pass it to `/build-tx` request:
+   ```json
+   {
+     "source_asset": {...},
+     "destination_asset": {...},
+     "amount": "100",
+     "user_address": "rAddress...",
+     "pricing": {
+       "gross_out": "120.00",
+       "fee_bps": 5,
+       "net_out": "119.94"
+     }
+   }
+   ```
+3. `/build-tx` will use the provided pricing to build both swap and fee transactions
+
+This ensures fee payment transaction is always included when pricing was promised in the quote.
+
 **Example transaction array:**
 ```json
 {
