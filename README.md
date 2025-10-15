@@ -18,6 +18,53 @@ A production-ready Fastify API server for XRPL routing that **beats the native X
 - **🔧 Transaction Building**: Generates ready-to-sign XRPL transactions (single or multi-leg arrays)
 - **🏗️ Clean Architecture**: Modular TypeScript codebase ready for scaling
 
+## Production Features
+
+### Input Validation
+All endpoints use strict schema validation powered by Zod:
+- **Addresses**: Must match Ripple's base58check format `r[1-9A-HJ-NP-Za-km-z]{25,35}` (excludes confusing chars: 0, O, I, l)
+- **Amounts**: Must be positive decimal strings
+- **Currencies**: XRP (no issuer) or 3-40 character codes with valid issuer addresses
+- **Slippage**: Basis points 0-10000 (0% to 100%)
+
+Invalid requests return `400 Bad Request` with detailed error messages.
+
+### Rate Limiting
+- **Limit**: 120 requests per minute per IP address
+- **Scope**: Applies to /quote and /build-tx (excludes /health and /metrics)
+- **Response**: `429 Too Many Requests` when limit exceeded
+- **Reset**: Rolling 60-second window
+
+### API Key Authentication (Optional)
+Set `ORREN_API_KEY` environment variable to require authentication:
+```bash
+export ORREN_API_KEY="your-secret-key"
+```
+
+Include key in request header:
+```bash
+curl -H "x-api-key: your-secret-key" -X POST http://localhost:5000/quote ...
+```
+
+Without valid key: `401 Unauthorized`
+
+### Metrics Endpoint
+`GET /metrics` exposes Prometheus-compatible metrics:
+- `orren_quote_latency_ms`: Median quote latency (updated on each /quote request)
+- `orren_cache_hit_ratio`: Cache efficiency (hits / total requests)
+- `orren_native_win_ratio`: Fraction where Orren net_out ≥ native pathfinder
+- `orren_improvement_bps_median`: Median improvement in basis points (gross vs native)
+
+Example output:
+```
+# HELP orren_quote_latency_ms Median quote latency
+# TYPE orren_quote_latency_ms gauge
+orren_quote_latency_ms 42.5
+# HELP orren_cache_hit_ratio Cache hit ratio
+# TYPE orren_cache_hit_ratio gauge
+orren_cache_hit_ratio 0.67
+```
+
 ## API Endpoints
 
 ### `GET /health`
@@ -33,6 +80,14 @@ Health check endpoint.
 
 ### `POST /quote`
 Get quotes from all available routes (AMM, CLOB, and XRP bridge for IOU↔IOU).
+
+**Request Format**: Supports both formats for compatibility:
+- `{source_asset, destination_asset, amount}` (recommended)
+- `{from, to, amount}` (alternative)
+
+Optional fields:
+- `user_address`: Enables native pathfinder comparison and fee calculation
+- `use_cache`: Set to `false` to bypass cache (default: `true`)
 
 **Example 1: XRP → USD (Direct Routes)**
 ```json
@@ -65,40 +120,47 @@ Response shows **high-precision output** and **real AMM fees**:
 }
 ```
 
-**Example 2: USD → EUR (XRP Bridge Routing)**
+**Example 2: USD → EUR with Native Comparison (Alternative Request Format)**
 ```json
 {
-  "source_asset": { 
+  "from": { 
     "currency": "USD",
     "issuer": "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B"
   },
-  "destination_asset": { 
+  "to": { 
     "currency": "EUR",
     "issuer": "rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq"
   },
-  "amount": "100"
+  "amount": "100",
+  "user_address": "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B"
 }
 ```
 
-Response shows **XRP bridge route** (USD→XRP→EUR) beats direct route **4x**:
+Response includes **circuit breaker indicators** and **native comparison status**:
 ```json
 {
   "quotes": [
     {
-      "route_type": "xrp-bridge",
-      "expected_out": "457.4515761760471025",
-      "latency_ms": 43,
+      "route_type": "hybrid-clob-amm",
+      "expected_out": "465.3313241913901",
+      "latency_ms": 46,
       "trust_tier": "high",
-      "score": 418.110741,
+      "score": 422.563099,
+      "source": "MOCK",
+      "guarantee": "unavailable",
+      "native_comparison": {
+        "status": "unavailable",
+        "reason": "native comparison failed"
+      },
       "metadata": {
         "leg1": {
           "route_type": "clob",
-          "expected_out": "233.00001",
+          "expected_out": "237.41500000000005",
           "trust_tier": "medium"
         },
         "leg2": {
           "route_type": "amm",
-          "expected_out": "457.4515761760471025",
+          "expected_out": "465.3778619775878233",
           "trust_tier": "high",
           "metadata": {
             "trading_fee": "0.8540"
@@ -114,6 +176,25 @@ Response shows **XRP bridge route** (USD→XRP→EUR) beats direct route **4x**:
   ]
 }
 ```
+
+**Circuit Breakers & Native Comparison**
+
+Each quote includes reliability indicators:
+
+- **source**: Data source for the quote
+  - `"ORREN"`: Successfully verified against native pathfinder - fees may apply
+  - `"MOCK"`: Fallback mode - XRPL API unavailable or comparison failed
+
+- **guarantee**: Contract guarantee status
+  - `"available"`: When source="ORREN" - pricing guaranteed ≥ native rates
+  - `"unavailable"`: When source="MOCK" - no fee collection, best-effort routing
+
+- **native_comparison**: Status object (always present when user_address provided)
+  - `{"status": "succeeded", ...}`: Comparison successful, pricing data available
+  - `{"status": "unavailable", "reason": "..."}`: Comparison failed (e.g., self-swap limitation)
+  - `{"status": "not_requested", "reason": "user_address not provided"}`: No comparison attempted
+
+**Important**: The API is stateless - /quote and /build-tx calculate pricing independently. Due to transient network conditions, pricing objects may differ between calls.
 
 ### `POST /build-tx`
 Get the best quote and build transaction(s). Returns a single transaction or an array for multi-leg routes.

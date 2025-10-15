@@ -12,6 +12,14 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### October 15, 2025 - Production Features: Validation, Rate Limiting & Metrics (V6)
+- **✅ Zod Input Validation**: All endpoints validate with strict schemas - addresses (Ripple base58), amounts (positive decimals), currencies
+- **🚦 Rate Limiting**: 120 req/min per IP, rolling 60s window, excludes /health and /metrics
+- **🔑 Optional API Key Auth**: ORREN_API_KEY environment variable for protected endpoints (x-api-key header)
+- **📊 Prometheus Metrics**: /metrics endpoint exposes latency, cache hit ratio, native win ratio, improvement basis points
+- **🔄 Request Format Flexibility**: Supports both {source_asset, destination_asset} and {from, to} for compatibility
+- **📚 Enhanced Documentation**: Production features section with validation rules, rate limit behavior, metrics examples
+
 ### October 15, 2025 - Dual-Transaction Fee Collection & Circuit Breakers (V5)
 - **💳 Transparent Fee Payment**: Dual-transaction approach returns [mainSwap, feePayment] array for user signing
   - Main transaction delivers gross amount (≥ native rate) to user
