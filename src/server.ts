@@ -26,7 +26,8 @@ app.addHook("onRequest", async (req, reply) => {
 
 // Naïve per-IP rate limit (MVP): 120/min
 const hits = new Map<string, { n: number; ts: number }>();
-app.addHook("onRequest", (req, reply) => {
+app.addHook("onRequest", async (req, reply) => {
+  if (req.url === '/metrics' || req.url === '/health') return; // Skip rate limit for metrics/health
   const ip = req.ip ?? "unknown";
   const now = Date.now();
   const rec = hits.get(ip) ?? { n: 0, ts: now };
