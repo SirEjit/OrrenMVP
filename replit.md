@@ -21,8 +21,9 @@ Preferred communication style: Simple, everyday language.
 - **🚨 Circuit Breakers**: Added source/guarantee fields to indicate routing reliability
   - source: "ORREN" + guarantee: "available" = fees apply, contract guaranteed
   - source: "MOCK" + guarantee: "unavailable" = no fees, fallback on RPC/network failures
+- **🔐 Security**: Stateless endpoints prevent fee forgery - server calculates pricing independently in /quote and /build-tx
 - **📍 Fee Address Config**: ORREN_FEE_ADDRESS environment variable for production fee collection wallet
-- **📚 Enhanced Docs**: Dual-transaction examples, circuit breaker behavior, execution integrity guarantees
+- **📚 Enhanced Docs**: Dual-transaction examples, circuit breaker behavior, execution integrity guarantees, transient consistency trade-offs
 
 ### October 15, 2025 - Dynamic Fee Model: "Always ≥ Native" (V4)
 - **💰 Value-Based Pricing**: Implemented dynamic fee system that guarantees users always get ≥ native pathfinder rates
