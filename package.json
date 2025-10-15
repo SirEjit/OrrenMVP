@@ -10,17 +10,22 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": ["xrpl", "amm", "routing", "fastify"],
+  "keywords": [
+    "xrpl",
+    "amm",
+    "routing",
+    "fastify"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "fastify": "^4.26.0",
     "@fastify/cors": "^9.0.1",
-    "xrpl": "^3.0.0"
+    "fastify": "^4.29.1",
+    "xrpl": "^3.1.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.19",
-    "typescript": "^5.3.3",
-    "tsx": "^4.7.1"
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
   }
 }

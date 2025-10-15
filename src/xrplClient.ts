@@ -25,8 +25,8 @@ export async function getOrderBook(
   
   const request: BookOffersRequest = {
     command: 'book_offers',
-    taker_gets: takerGets,
-    taker_pays: takerPays,
+    taker_gets: takerGets as any,
+    taker_pays: takerPays as any,
     limit: 10,
   };
 
@@ -43,12 +43,18 @@ export async function getAMMInfo(
   try {
     const request: AMMInfoRequest = {
       command: 'amm_info',
-      asset: asset,
-      asset2: asset2,
+      asset: asset as any,
+      asset2: asset2 as any,
     };
 
     const response = await xrplClient.request(request);
-    return response.result.amm as AMMInfo;
+    const amm = response.result.amm as any;
+    return {
+      amm_account: amm.account,
+      amount: amm.amount,
+      amount2: amm.amount2,
+      lp_token: amm.lp_token,
+    };
   } catch (error) {
     return null;
   }

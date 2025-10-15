@@ -3,7 +3,7 @@ import { QuoteResponse, QuoteRequest } from './types.js';
 export interface TransactionBlueprint {
   TransactionType: string;
   Account: string;
-  Amount: string | {
+  Amount?: string | {
     currency: string;
     issuer: string;
     value: string;
