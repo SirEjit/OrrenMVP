@@ -53,8 +53,6 @@ export async function registerRoutes(app: FastifyInstance) {
             native_out: feeResult.native_out,
             improvement_bps: feeResult.improvement_bps,
           };
-          
-          quotes[0].expected_out = feeResult.net_out;
         }
       }
 
@@ -98,6 +96,8 @@ export async function registerRoutes(app: FastifyInstance) {
         bestQuote,
         user_address
       );
+      
+      let feeInfo;
       if (comparison) {
         bestQuote.native_comparison = comparison;
         
@@ -115,14 +115,18 @@ export async function registerRoutes(app: FastifyInstance) {
           improvement_bps: feeResult.improvement_bps,
         };
         
-        bestQuote.expected_out = feeResult.net_out;
+        feeInfo = {
+          gross_out: feeResult.gross_out,
+          fee_bps: feeResult.fee_bps,
+          net_out: feeResult.net_out,
+        };
       }
 
       const tx = buildTransaction(
         bestQuote,
         { source_asset, destination_asset, amount },
         user_address,
-        { minOut: min_out, slippageBps: slippage_bps, mode }
+        { minOut: min_out, slippageBps: slippage_bps, mode, feeInfo }
       );
 
       return {

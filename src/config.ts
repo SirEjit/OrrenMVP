@@ -13,4 +13,7 @@ export const config = {
   features: {
     nativeComparison: process.env.ENABLE_NATIVE_COMPARISON === 'true',
   },
+  fees: {
+    orrenAddress: process.env.ORREN_FEE_ADDRESS || 'rOrrenFeeAddressPlaceholder',
+  },
 } as const;
