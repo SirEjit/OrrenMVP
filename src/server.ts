@@ -15,7 +15,7 @@ await app.register(cors, {
 
 // API key (optional)
 app.addHook("onRequest", async (req, reply) => {
-  const required = process.env.API_KEY;
+  const required = process.env.ORREN_API_KEY;
   if (!required) return;
   if (req.url === '/metrics' || req.url === '/health') return; // Skip auth for metrics/health
   if (req.headers["x-api-key"] !== required) {
