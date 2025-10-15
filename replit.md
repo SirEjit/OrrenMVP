@@ -12,6 +12,10 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### October 15, 2025 - Payment Semantics Fix & Slippage Protection (V3.1)
+- **🔧 Fixed Payment Destination**: Payment transactions now correctly set `Destination` to user address for self-swaps (routing handled by XRPL's liquidity engine via Paths, not by Destination field)
+- **📚 Documentation**: Updated all README examples to show correct Payment transaction semantics
+
 ### October 15, 2025 - Slippage Protection & Feature Flags (V3)
 - **🛡️ Slippage Protection**: Added `min_out` and `slippage_bps` parameters to /build-tx endpoint
   - Payment transactions: Uses `DeliverMin` field with `tfPartialPayment` flag (Flags: 131072 / 0x00020000) for XRPL protocol-level slippage enforcement

@@ -147,7 +147,7 @@ Response returns **single transaction** with high-precision amounts:
       "value": "237.1251340631834603"
     },
     "SendMax": "100000000",
-    "Destination": "rHUpaqUPbwzKZdzQ8ZQCme18FrgW9pB4am"
+    "Destination": "rN7n7otQDd6FczFgLdlqtyMVrn3NnrcH7C"
   }
 }
 ```
@@ -195,7 +195,7 @@ Response returns **array of 2 transactions** for the XRP bridge:
         "value": "457.4516840664631829"
       },
       "SendMax": "233000070",
-      "Destination": "rw3tWE23X3Qn43XGKwqVJ7J8QA42rYEGy4"
+      "Destination": "rN7n7otQDd6FczFgLdlqtyMVrn3NnrcH7C"
     }
   ]
 }
@@ -232,7 +232,7 @@ Response includes **slippage protection** (1% tolerance = 100 basis points):
       "issuer": "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B",
       "value": "234.753882"
     },
-    "Destination": "rHUpaqUPbwzKZdzQ8ZQCme18FrgW9pB4am",
+    "Destination": "rN7n7otQDd6FczFgLdlqtyMVrn3NnrcH7C",
     "Flags": 131072
   }
 }
@@ -246,6 +246,13 @@ Response includes **slippage protection** (1% tolerance = 100 basis points):
 - **Payment transactions (AMM)**: Adds `DeliverMin` field and `tfPartialPayment` flag (Flags: 131072 / 0x00020000) for protocol-level slippage enforcement with SendMax as exact-in ceiling
 - **OfferCreate transactions (CLOB)**: Adds `tfFillOrKill` flag (Flags: 4 / 0x00000004) to cancel if not filled completely
 - **Multi-leg routes**: Applies protection to each leg individually based on transaction type
+
+**Payment Transaction Semantics:**
+- `Destination`: The recipient account (same as `Account` for self-swaps, which is the typical use case)
+- `SendMax`: Maximum amount to send (exact-in ceiling)
+- `Amount`: Expected amount to receive
+- `DeliverMin`: Minimum acceptable amount (with `tfPartialPayment` flag for slippage protection)
+- **Routing**: XRPL's liquidity engine automatically routes through AMM pools and order books via internal Paths - you don't specify the routing venues in the transaction
 
 **Note:** XRP amounts are formatted as strings in drops (1 XRP = 1,000,000 drops), while issued currencies use `{currency, issuer, value}` objects. Multi-leg routes return an array of transactions that must be executed in sequence.
 

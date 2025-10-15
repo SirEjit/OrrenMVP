@@ -108,7 +108,7 @@ export function buildTransaction(
       Account: userAddress,
       Amount: formatAmount(request.destination_asset, quote.expected_out),
       SendMax: formatAmount(request.source_asset, request.amount),
-      Destination: quote.metadata?.amm_account || userAddress,
+      Destination: userAddress,
     };
     
     if (options?.minOut || options?.slippageBps) {
