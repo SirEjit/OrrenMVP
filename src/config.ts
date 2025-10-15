@@ -10,4 +10,7 @@ export const config = {
     maxSize: 100,
     ttlMs: 5000,
   },
+  features: {
+    nativeComparison: process.env.ENABLE_NATIVE_COMPARISON === 'true',
+  },
 } as const;

@@ -9,8 +9,9 @@ A production-ready Fastify API server for XRPL routing that **beats the native X
 - **💎 High-Precision Math**: Uses decimal.js-light for all calculations - no rounding errors even on large amounts
 - **📊 Real AMM Fees**: Reads actual trading_fee from each AMM pool (not hardcoded defaults), applies fees correctly in swap calculations
 - **🎯 Multi-Route Quoting**: Fetches quotes from AMM pools, order books, XRP bridges, and hybrid routes simultaneously
+- **🛡️ Slippage Protection**: Supports `min_out` and `slippage_bps` parameters with DeliverMin and tfFillOrKill patterns
 - **🌉 Cross-Chain Ready**: Stub integrations for Axelar and Wormhole cross-chain bridges (ready for production integration)
-- **📈 Native Comparison**: Compares routes to XRPL's native pathfinder, showing basis point savings
+- **📈 Native Comparison**: Feature-flagged comparison to XRPL's native pathfinder, showing basis point savings
 - **⚡ Smart Scoring**: Deterministic algorithm considers output amount, trust tier, and latency to pick the best route
 - **💾 In-Memory Caching**: LRU cache with 5-second TTL for improved performance
 - **🔧 Transaction Building**: Generates ready-to-sign XRPL transactions (single or multi-leg arrays)
@@ -200,6 +201,51 @@ Response returns **array of 2 transactions** for the XRP bridge:
 }
 ```
 
+**Example 3: Slippage-Protected Transaction**
+```json
+{
+  "source_asset": { "currency": "XRP" },
+  "destination_asset": {
+    "currency": "USD",
+    "issuer": "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B"
+  },
+  "amount": "100",
+  "user_address": "rN7n7otQDd6FczFgLdlqtyMVrn3NnrcH7C",
+  "slippage_bps": 100
+}
+```
+
+Response includes **slippage protection** (1% tolerance = 100 basis points):
+```json
+{
+  "transaction": {
+    "TransactionType": "Payment",
+    "Account": "rN7n7otQDd6FczFgLdlqtyMVrn3NnrcH7C",
+    "Amount": {
+      "currency": "USD",
+      "issuer": "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B",
+      "value": "237.1251340631834603"
+    },
+    "SendMax": "100000000",
+    "DeliverMin": {
+      "currency": "USD",
+      "issuer": "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B",
+      "value": "234.753882"
+    },
+    "Destination": "rHUpaqUPbwzKZdzQ8ZQCme18FrgW9pB4am"
+  }
+}
+```
+
+**Slippage Protection Options:**
+- `slippage_bps`: Basis points of acceptable slippage (e.g., 100 = 1%, 200 = 2%)
+- `min_out`: Explicit minimum output amount (overrides slippage_bps)
+
+**How It Works:**
+- **Payment transactions (AMM)**: Adds `DeliverMin` field to ensure minimum output
+- **OfferCreate transactions (CLOB)**: Adds `tfFillOrKill` flag (Flags: 4) to cancel if not filled completely
+- **Multi-leg routes**: Applies protection to each leg individually
+
 **Note:** XRP amounts are formatted as strings in drops (1 XRP = 1,000,000 drops), while issued currencies use `{currency, issuer, value}` objects. Multi-leg routes return an array of transactions that must be executed in sequence.
 
 ## Route Types
@@ -237,7 +283,7 @@ When you include `user_address` in the `/quote` request, the API compares the be
 }
 ```
 
-**Note:** Native comparison uses XRPL's `ripple_path_find` API and is currently in beta. The API has specific requirements (different source/destination accounts, proper trust lines) that may prevent comparison in some scenarios. When comparison fails, the `native_comparison` field is omitted from the response. This feature is being refined and will be fully functional in a future release.
+**Note:** Native comparison uses XRPL's `ripple_path_find` API and is **feature-flagged** (disabled by default). Enable it by setting `ENABLE_NATIVE_COMPARISON=true` environment variable. The API has specific requirements (different source/destination accounts, proper trust lines) that may prevent comparison in some scenarios. When comparison fails or the feature is disabled, the `native_comparison` field is omitted from the response.
 
 ## Project Structure
 
@@ -294,6 +340,7 @@ Environment variables (optional):
 
 - `PORT` - Server port (default: 5000)
 - `XRPL_SERVER` - XRPL server URL (default: wss://s1.ripple.com)
+- `ENABLE_NATIVE_COMPARISON` - Enable native pathfinder comparison (default: false, set to 'true' to enable)
 
 ## Architecture
 

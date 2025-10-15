@@ -3,6 +3,7 @@ import { getBestQuote, getAllQuotes } from './quotes/index.js';
 import { buildTransaction } from './buildTx.js';
 import { compareToNative } from './nativeComparison.js';
 import { QuoteRequest } from './types.js';
+import { config } from './config.js';
 
 export async function registerRoutes(app: FastifyInstance) {
   app.get('/health', async () => {
@@ -27,7 +28,7 @@ export async function registerRoutes(app: FastifyInstance) {
         });
       }
 
-      if (user_address && quotes.length > 0) {
+      if (config.features.nativeComparison && user_address && quotes.length > 0) {
         const comparison = await compareToNative(
           source_asset,
           destination_asset,
@@ -50,10 +51,10 @@ export async function registerRoutes(app: FastifyInstance) {
   });
 
   app.post<{
-    Body: QuoteRequest & { user_address: string };
+    Body: QuoteRequest & { user_address: string; min_out?: string; slippage_bps?: number };
   }>('/build-tx', async (request, reply) => {
     try {
-      const { source_asset, destination_asset, amount, user_address } = request.body;
+      const { source_asset, destination_asset, amount, user_address, min_out, slippage_bps } = request.body;
 
       if (!source_asset || !destination_asset || !amount || !user_address) {
         return reply.status(400).send({
@@ -73,21 +74,24 @@ export async function registerRoutes(app: FastifyInstance) {
         });
       }
 
-      const comparison = await compareToNative(
-        source_asset,
-        destination_asset,
-        amount,
-        bestQuote,
-        user_address
-      );
-      if (comparison) {
-        bestQuote.native_comparison = comparison;
+      if (config.features.nativeComparison) {
+        const comparison = await compareToNative(
+          source_asset,
+          destination_asset,
+          amount,
+          bestQuote,
+          user_address
+        );
+        if (comparison) {
+          bestQuote.native_comparison = comparison;
+        }
       }
 
       const tx = buildTransaction(
         bestQuote,
         { source_asset, destination_asset, amount },
-        user_address
+        user_address,
+        { minOut: min_out, slippageBps: slippage_bps }
       );
 
       return {
