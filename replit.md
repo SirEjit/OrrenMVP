@@ -12,6 +12,13 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### October 15, 2025 - Advanced Routing & Metrics (V2)
+- **🔀 Hybrid AMM→CLOB Routes**: Added two-leg combinations (AMM→CLOB, CLOB→AMM) for optimal multi-venue execution
+- **🌉 Cross-Chain Bridges**: Created stub implementations for Axelar and Wormhole bridge integrations (ready for API keys)
+- **📈 Native Pathfinder Comparison**: Added basis point savings metric comparing our routes to XRPL's native pathfinder
+- **Enhanced Types**: Extended QuoteResponse to support hybrid and cross-chain route types
+- **Documentation**: Comprehensive route type table and native comparison examples in README
+
 ### October 15, 2025 - Enhanced Routing System (BEATS NATIVE PATHFINDER!)
 - **🚀 XRP Bridge Routing**: Implemented two-leg IOU→XRP→IOU routing that often delivers 4x better rates than direct routes
 - **💎 High-Precision Math**: Replaced all float arithmetic with decimal.js-light - eliminates rounding errors on large amounts

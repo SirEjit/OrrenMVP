@@ -5,9 +5,12 @@ A production-ready Fastify API server for XRPL routing that **beats the native X
 ## Features
 
 - **🚀 XRP Bridge Routing**: For IOU↔IOU swaps, automatically tries two-leg routing through XRP as a pivot (often 4x better than direct routes!)
+- **🔀 Hybrid AMM→CLOB Routes**: Combines AMM and order book liquidity in two-leg swaps for optimal execution
 - **💎 High-Precision Math**: Uses decimal.js-light for all calculations - no rounding errors even on large amounts
 - **📊 Real AMM Fees**: Reads actual trading_fee from each AMM pool (not hardcoded defaults), applies fees correctly in swap calculations
-- **🎯 Multi-Route Quoting**: Fetches quotes from AMM pools, order books, and XRP bridges simultaneously
+- **🎯 Multi-Route Quoting**: Fetches quotes from AMM pools, order books, XRP bridges, and hybrid routes simultaneously
+- **🌉 Cross-Chain Ready**: Stub integrations for Axelar and Wormhole cross-chain bridges (ready for production integration)
+- **📈 Native Comparison**: Compares routes to XRPL's native pathfinder, showing basis point savings
 - **⚡ Smart Scoring**: Deterministic algorithm considers output amount, trust tier, and latency to pick the best route
 - **💾 In-Memory Caching**: LRU cache with 5-second TTL for improved performance
 - **🔧 Transaction Building**: Generates ready-to-sign XRPL transactions (single or multi-leg arrays)
@@ -197,7 +200,44 @@ Response returns **array of 2 transactions** for the XRP bridge:
 }
 ```
 
-**Note:** XRP amounts are formatted as strings in drops (1 XRP = 1,000,000 drops), while issued currencies use `{currency, issuer, value}` objects. XRP bridge routes return an array of transactions that must be executed in sequence.
+**Note:** XRP amounts are formatted as strings in drops (1 XRP = 1,000,000 drops), while issued currencies use `{currency, issuer, value}` objects. Multi-leg routes return an array of transactions that must be executed in sequence.
+
+## Route Types
+
+The API returns quotes from multiple routing strategies:
+
+| Route Type | Description | Trust Tier | Use Case |
+|------------|-------------|------------|----------|
+| `amm` | Direct AMM pool swap | High | Best for liquid pairs with deep pools |
+| `clob` | Central limit order book | Medium | Best when order book has better depth |
+| `xrp-bridge` | Two-leg IOU→XRP→IOU | High | Often 2-4x better for IOU-to-IOU swaps |
+| `hybrid-amm-clob` | AMM first leg, CLOB second | High | Combines liquidity sources optimally |
+| `hybrid-clob-amm` | CLOB first leg, AMM second | High | Alternative hybrid routing |
+| `cross-chain-axelar` | Axelar bridge (stub) | Medium | Cross-chain routing to Ethereum, etc. |
+| `cross-chain-wormhole` | Wormhole bridge (stub) | Medium | Alternative cross-chain routing |
+
+### Native Pathfinder Comparison
+
+When you include `user_address` in the `/quote` request, the API compares the best route to XRPL's native pathfinder and returns improvement metrics:
+
+```json
+{
+  "quotes": [
+    {
+      "route_type": "xrp-bridge",
+      "expected_out": "458.017918491837747",
+      "native_comparison": {
+        "native_expected_out": "108.50",
+        "our_expected_out": "458.017918491837747",
+        "improvement_bps": "32211.23",
+        "improvement_percent": "322.11"
+      }
+    }
+  ]
+}
+```
+
+**Note:** Native comparison uses XRPL's `ripple_path_find` API and is currently in beta. The API has specific requirements (different source/destination accounts, proper trust lines) that may prevent comparison in some scenarios. When comparison fails, the `native_comparison` field is omitted from the response. This feature is being refined and will be fully functional in a future release.
 
 ## Project Structure
 

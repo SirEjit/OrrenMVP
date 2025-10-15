@@ -1,6 +1,7 @@
 import { getAMMQuote } from './amm.js';
 import { getCLOBQuote } from './clob.js';
 import { getXRPBridgeQuote } from './xrpBridge.js';
+import { getHybridQuote } from './hybrid.js';
 import { QuoteRequest, QuoteResponse } from '../types.js';
 import { calculateScore } from '../scoring.js';
 
@@ -15,7 +16,10 @@ export async function getAllQuotes(request: QuoteRequest): Promise<QuoteResponse
   ];
 
   if (isIouToIou) {
-    quotePromises.push(getXRPBridgeQuote(request.source_asset, request.destination_asset, request.amount));
+    quotePromises.push(
+      getXRPBridgeQuote(request.source_asset, request.destination_asset, request.amount),
+      getHybridQuote(request.source_asset, request.destination_asset, request.amount)
+    );
   }
 
   const results = await Promise.all(quotePromises);

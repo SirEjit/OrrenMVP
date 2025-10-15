@@ -48,9 +48,9 @@ export function buildTransaction(
   request: QuoteRequest,
   userAddress: string
 ): TransactionBlueprint | TransactionBlueprint[] {
-  if (quote.route_type === 'xrp-bridge') {
+  if (quote.route_type === 'xrp-bridge' || quote.route_type === 'hybrid-amm-clob' || quote.route_type === 'hybrid-clob-amm') {
     if (!quote.metadata?.leg1 || !quote.metadata?.leg2) {
-      throw new Error('XRP bridge route missing leg information');
+      throw new Error(`${quote.route_type} route missing leg information`);
     }
 
     const XRP_CURRENCY: Currency = { currency: 'XRP' };

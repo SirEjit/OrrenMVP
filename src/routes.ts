@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { getBestQuote, getAllQuotes } from './quotes/index.js';
 import { buildTransaction } from './buildTx.js';
+import { compareToNative } from './nativeComparison.js';
 import { QuoteRequest } from './types.js';
 
 export async function registerRoutes(app: FastifyInstance) {
@@ -8,9 +9,9 @@ export async function registerRoutes(app: FastifyInstance) {
     return { status: 'ok', timestamp: new Date().toISOString() };
   });
 
-  app.post<{ Body: QuoteRequest }>('/quote', async (request, reply) => {
+  app.post<{ Body: QuoteRequest & { user_address?: string } }>('/quote', async (request, reply) => {
     try {
-      const { source_asset, destination_asset, amount } = request.body;
+      const { source_asset, destination_asset, amount, user_address } = request.body;
 
       if (!source_asset || !destination_asset || !amount) {
         return reply.status(400).send({
@@ -24,6 +25,19 @@ export async function registerRoutes(app: FastifyInstance) {
         return reply.status(404).send({
           error: 'No routes found for the given asset pair',
         });
+      }
+
+      if (user_address && quotes.length > 0) {
+        const comparison = await compareToNative(
+          source_asset,
+          destination_asset,
+          amount,
+          quotes[0],
+          user_address
+        );
+        if (comparison) {
+          quotes[0].native_comparison = comparison;
+        }
       }
 
       return { quotes };
@@ -57,6 +71,17 @@ export async function registerRoutes(app: FastifyInstance) {
         return reply.status(404).send({
           error: 'No route found',
         });
+      }
+
+      const comparison = await compareToNative(
+        source_asset,
+        destination_asset,
+        amount,
+        bestQuote,
+        user_address
+      );
+      if (comparison) {
+        bestQuote.native_comparison = comparison;
       }
 
       const tx = buildTransaction(

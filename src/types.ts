@@ -10,7 +10,7 @@ export interface QuoteRequest {
 }
 
 export interface QuoteResponse {
-  route_type: 'amm' | 'clob' | 'xrp-bridge';
+  route_type: 'amm' | 'clob' | 'xrp-bridge' | 'hybrid-amm-clob' | 'hybrid-clob-amm' | 'cross-chain-axelar' | 'cross-chain-wormhole';
   expected_out: string;
   latency_ms: number;
   trust_tier: 'high' | 'medium' | 'low';
@@ -23,6 +23,14 @@ export interface QuoteResponse {
     trading_fee?: string;
     leg1?: QuoteResponse;
     leg2?: QuoteResponse;
+    bridge_fee?: string;
+    destination_chain?: string;
+  };
+  native_comparison?: {
+    native_expected_out: string;
+    our_expected_out: string;
+    improvement_bps: string;
+    improvement_percent: string;
   };
 }
 
