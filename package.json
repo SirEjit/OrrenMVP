@@ -20,6 +20,7 @@
   "license": "MIT",
   "dependencies": {
     "@fastify/cors": "^9.0.1",
+    "decimal.js-light": "^2.5.1",
     "fastify": "^4.29.1",
     "xrpl": "^3.1.0"
   },
