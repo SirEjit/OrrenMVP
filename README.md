@@ -352,6 +352,7 @@ Orren uses a value-based pricing model that guarantees you **always** get at lea
 ### Fee Configuration
 
 Configure via environment variables:
+- `ORREN_FEE_ADDRESS` - Wallet address to receive fee payments (required for production)
 - `FEE_ALPHA=0.5` - Share of improvement (0.0 to 1.0)
 - `FEE_MIN_BPS=1` - Minimum fee in basis points
 - `FEE_CAP_BPS=5` - Maximum fee in basis points (5 bps = 0.05%)
@@ -374,14 +375,49 @@ orren_net_out = 120 × (1 - 5/10,000) = 119.94 EUR
 119.94 >= 100 ✓ (User saves 19.94 EUR, Orren earns 0.06 EUR)
 ```
 
+### Fee Collection Mechanism
+
+Orren uses a **dual-transaction approach** for transparent, on-chain fee collection:
+
+**When native comparison succeeds:**
+1. **Main swap transaction**: Delivers the gross amount to user (≥ native rate)
+2. **Fee payment transaction**: User pays calculated fee to Orren wallet
+
+Both transactions are returned as an array and signed together in a single UX step.
+
+**Example transaction array:**
+```json
+{
+  "transaction": [
+    {
+      "TransactionType": "Payment",
+      "Account": "rUserAddress...",
+      "Amount": {"currency": "EUR", "value": "120.00"},
+      "SendMax": {"currency": "USD", "value": "100"},
+      "Destination": "rUserAddress...",
+      "DeliverMin": {"currency": "EUR", "value": "119.94"},
+      "Flags": 131072
+    },
+    {
+      "TransactionType": "Payment",
+      "Account": "rUserAddress...",
+      "Destination": "rOrrenFeeAddress...",
+      "Amount": {"currency": "EUR", "value": "0.06"}
+    }
+  ]
+}
+```
+
 ### Response Format with Pricing
 
-When `user_address` is provided, quotes include a `pricing` object:
+When `user_address` is provided and native comparison succeeds, quotes include:
 
 ```json
 {
   "quotes": [{
-    "expected_out": "119.94",
+    "expected_out": "120.00",
+    "source": "ORREN",
+    "guarantee": "available",
     "pricing": {
       "gross_out": "120.00",
       "fee_bps": 5,
@@ -393,12 +429,19 @@ When `user_address` is provided, quotes include a `pricing` object:
 }
 ```
 
-**Important Limitation:** Due to XRPL API constraints, `ripple_path_find` cannot compare self-swaps (when the transaction is from/to the same account). When native comparison is unavailable:
-- The `pricing` object is **omitted** from the response
-- No fees are charged (the contract guarantee cannot be verified)
-- Quotes show gross output without fee adjustments
+**Circuit Breaker / Fallback Behavior:**
 
-To enable the "Always ≥ native" fee model, requests must use different source and destination accounts with proper trust lines.
+When native comparison fails (RPC errors, XRPL API limitations for self-swaps, network issues):
+- `source: "MOCK"` and `guarantee: "unavailable"` are set
+- The `pricing` object is **omitted** from the response
+- No fees are charged (contract guarantee cannot be verified)
+- Quotes show gross output without fee adjustments
+- Transaction array contains only the main swap (no fee payment)
+
+**Requirements for fee model:**
+- Different source and destination accounts (self-swaps cannot be compared)
+- Proper trust lines established
+- XRPL network connectivity
 
 ## Route Types
 

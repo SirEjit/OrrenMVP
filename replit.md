@@ -12,6 +12,18 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### October 15, 2025 - Dual-Transaction Fee Collection & Circuit Breakers (V5)
+- **💳 Transparent Fee Payment**: Dual-transaction approach returns [mainSwap, feePayment] array for user signing
+  - Main transaction delivers gross amount (≥ native rate) to user
+  - Separate Payment transaction sends calculated fee to Orren wallet
+  - Both signed together in single UX step for on-chain execution integrity
+- **🔧 Execution Safety**: SendMax set for gross delivery, DeliverMin enforces net_out guarantee
+- **🚨 Circuit Breakers**: Added source/guarantee fields to indicate routing reliability
+  - source: "ORREN" + guarantee: "available" = fees apply, contract guaranteed
+  - source: "MOCK" + guarantee: "unavailable" = no fees, fallback on RPC/network failures
+- **📍 Fee Address Config**: ORREN_FEE_ADDRESS environment variable for production fee collection wallet
+- **📚 Enhanced Docs**: Dual-transaction examples, circuit breaker behavior, execution integrity guarantees
+
 ### October 15, 2025 - Dynamic Fee Model: "Always ≥ Native" (V4)
 - **💰 Value-Based Pricing**: Implemented dynamic fee system that guarantees users always get ≥ native pathfinder rates
   - Calculates improvement_bps = 10,000 × (orren_gross / native - 1)
