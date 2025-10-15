@@ -238,13 +238,73 @@ Response includes **slippage protection** (1% tolerance = 100 basis points):
 }
 ```
 
+**Example 4: Exact-Out Mode (Receive Exact Amount)**
+```json
+{
+  "source_asset": { "currency": "XRP" },
+  "destination_asset": {
+    "currency": "USD",
+    "issuer": "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B"
+  },
+  "amount": "100",
+  "user_address": "rN7n7otQDd6FczFgLdlqtyMVrn3NnrcH7C",
+  "mode": "exact_out"
+}
+```
+
+Response with **exact output guarantee** (SendMax has 2% buffer):
+```json
+{
+  "transaction": {
+    "TransactionType": "Payment",
+    "Account": "rN7n7otQDd6FczFgLdlqtyMVrn3NnrcH7C",
+    "Amount": {
+      "currency": "USD",
+      "issuer": "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B",
+      "value": "237.125134"
+    },
+    "SendMax": "102000000",
+    "DeliverMin": {
+      "currency": "USD",
+      "issuer": "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B",
+      "value": "237.125134"
+    },
+    "Destination": "rN7n7otQDd6FczFgLdlqtyMVrn3NnrcH7C",
+    "Flags": 131072
+  }
+}
+```
+
+### Slippage Control
+
+XRPL Payment transactions use three fields together for slippage protection:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  SendMax       │ Maximum to send (exact-in ceiling)     │
+│  DeliverMin    │ Minimum to receive (slippage floor)    │
+│  Flags: 131072 │ tfPartialPayment (0x00020000)          │
+└─────────────────────────────────────────────────────────┘
+```
+
 **Slippage Protection Options:**
 - `slippage_bps`: Basis points of acceptable slippage (e.g., 100 = 1%, 200 = 2%)
 - `min_out`: Explicit minimum output amount (overrides slippage_bps)
+- `mode`: Transaction mode - `"exact_in"` (default) or `"exact_out"`
 
-**How It Works:**
-- **Payment transactions (AMM)**: Adds `DeliverMin` field and `tfPartialPayment` flag (Flags: 131072 / 0x00020000) for protocol-level slippage enforcement with SendMax as exact-in ceiling
-- **OfferCreate transactions (CLOB)**: Adds `tfFillOrKill` flag (Flags: 4 / 0x00000004) to cancel if not filled completely
+**Mode Behavior:**
+- **exact_in** (default): Spend exact input amount, receive variable output with slippage protection
+  - SendMax = input amount (exact)
+  - DeliverMin = output - slippage (if slippage options provided)
+  
+- **exact_out**: Receive exact output amount, spend variable input with buffer
+  - SendMax = input amount + 2% buffer
+  - DeliverMin = output amount (exact match required)
+  - Automatically sets `tfPartialPayment` flag
+
+**Transaction Type Behavior:**
+- **Payment transactions (AMM)**: Uses `DeliverMin` + `tfPartialPayment` flag (Flags: 131072 / 0x00020000)
+- **OfferCreate transactions (CLOB)**: Uses `tfFillOrKill` flag (Flags: 4 / 0x00000004) for all-or-nothing fills
 - **Multi-leg routes**: Applies protection to each leg individually based on transaction type
 
 **Payment Transaction Semantics:**

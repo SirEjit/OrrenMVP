@@ -51,10 +51,10 @@ export async function registerRoutes(app: FastifyInstance) {
   });
 
   app.post<{
-    Body: QuoteRequest & { user_address: string; min_out?: string; slippage_bps?: number };
+    Body: QuoteRequest & { user_address: string; min_out?: string; slippage_bps?: number; mode?: 'exact_in' | 'exact_out' };
   }>('/build-tx', async (request, reply) => {
     try {
-      const { source_asset, destination_asset, amount, user_address, min_out, slippage_bps } = request.body;
+      const { source_asset, destination_asset, amount, user_address, min_out, slippage_bps, mode } = request.body;
 
       if (!source_asset || !destination_asset || !amount || !user_address) {
         return reply.status(400).send({
@@ -91,7 +91,7 @@ export async function registerRoutes(app: FastifyInstance) {
         bestQuote,
         { source_asset, destination_asset, amount },
         user_address,
-        { minOut: min_out, slippageBps: slippage_bps }
+        { minOut: min_out, slippageBps: slippage_bps, mode }
       );
 
       return {

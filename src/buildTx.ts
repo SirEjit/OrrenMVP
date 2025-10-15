@@ -36,6 +36,7 @@ export interface TransactionBlueprint {
 export interface BuildTransactionOptions {
   minOut?: string;
   slippageBps?: number;
+  mode?: 'exact_in' | 'exact_out';
 }
 
 function formatAmount(currency: Currency, amount: string): string | { currency: string; issuer: string; value: string } {
@@ -103,6 +104,22 @@ export function buildTransaction(
   }
 
   if (quote.route_type === 'amm') {
+    const mode = options?.mode || 'exact_in';
+    
+    if (mode === 'exact_out') {
+      const sendMaxBuffer = new Decimal(request.amount).mul(1.02);
+      const tx: TransactionBlueprint = {
+        TransactionType: 'Payment',
+        Account: userAddress,
+        Amount: formatAmount(request.destination_asset, quote.expected_out),
+        SendMax: formatAmount(request.source_asset, sendMaxBuffer.toString()),
+        Destination: userAddress,
+        DeliverMin: formatAmount(request.destination_asset, quote.expected_out),
+        Flags: TF_PARTIAL_PAYMENT,
+      };
+      return tx;
+    }
+    
     const tx: TransactionBlueprint = {
       TransactionType: 'Payment',
       Account: userAddress,
@@ -120,6 +137,20 @@ export function buildTransaction(
     return tx;
   }
 
+  const mode = options?.mode || 'exact_in';
+  
+  if (mode === 'exact_out') {
+    const sendMaxBuffer = new Decimal(request.amount).mul(1.02);
+    const tx: TransactionBlueprint = {
+      TransactionType: 'OfferCreate',
+      Account: userAddress,
+      TakerGets: formatAmount(request.destination_asset, quote.expected_out),
+      TakerPays: formatAmount(request.source_asset, sendMaxBuffer.toString()),
+      Flags: TF_FILL_OR_KILL,
+    };
+    return tx;
+  }
+  
   const tx: TransactionBlueprint = {
     TransactionType: 'OfferCreate',
     Account: userAddress,

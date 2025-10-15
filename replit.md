@@ -12,6 +12,13 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### October 15, 2025 - Exact-In/Exact-Out Mode & Documentation Polish (V3.2)
+- **🔄 Transaction Mode Toggle**: Added `mode` parameter to /build-tx endpoint supporting "exact_in" (default) and "exact_out"
+  - exact_in: SendMax = input amount (exact), DeliverMin = output - slippage
+  - exact_out: SendMax = input + 2% buffer, DeliverMin = output (exact match)
+- **📦 Slippage Control Box**: Added visual documentation showing SendMax, DeliverMin, and Flags fields together
+- **📚 Enhanced Docs**: Added Example 4 demonstrating exact_out mode with buffer calculations
+
 ### October 15, 2025 - Payment Semantics Fix & Slippage Protection (V3.1)
 - **🔧 Fixed Payment Destination**: Payment transactions now correctly set `Destination` to user address for self-swaps (routing handled by XRPL's liquidity engine via Paths, not by Destination field)
 - **📚 Documentation**: Updated all README examples to show correct Payment transaction semantics
