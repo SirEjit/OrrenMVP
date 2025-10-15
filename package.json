@@ -1,15 +1,26 @@
 {
-  "name": "nodejs",
+  "name": "orren-mvp",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Fastify API for XRPL routing with AMM and order book integration",
+  "main": "src/server.ts",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
   },
-  "keywords": [],
+  "keywords": ["xrpl", "amm", "routing", "fastify"],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
-    "@types/node": "^22.13.11"
+    "fastify": "^4.26.0",
+    "@fastify/cors": "^9.0.1",
+    "xrpl": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.19",
+    "typescript": "^5.3.3",
+    "tsx": "^4.7.1"
   }
 }
