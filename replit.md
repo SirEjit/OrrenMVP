@@ -14,12 +14,13 @@ Preferred communication style: Simple, everyday language.
 
 ### October 15, 2025 - Slippage Protection & Feature Flags (V3)
 - **🛡️ Slippage Protection**: Added `min_out` and `slippage_bps` parameters to /build-tx endpoint
-  - Payment transactions: Uses `DeliverMin` field for minimum output guarantee
-  - OfferCreate transactions: Uses `tfFillOrKill` flag (Flags: 4) for all-or-nothing fills
-  - Multi-leg routes: Applies protection to each leg independently
+  - Payment transactions: Uses `DeliverMin` field with `tfPartialPayment` flag (Flags: 131072 / 0x00020000) for XRPL protocol-level slippage enforcement
+  - OfferCreate transactions: Uses `tfFillOrKill` flag (Flags: 4 / 0x00000004) for all-or-nothing fills
+  - Multi-leg routes: Applies protection to each leg independently based on transaction type
+  - SendMax remains as exact-in ceiling for Payment transactions
 - **🚩 Feature Flags**: Added `ENABLE_NATIVE_COMPARISON` environment variable to control native pathfinder comparison
-- **📐 Precision Math**: Slippage calculations use Decimal.js-light for accurate basis point conversions
-- **📚 Documentation**: Added slippage protection examples and configuration guide
+- **📐 Precision Math**: Slippage calculations use Decimal.js-light for accurate basis point conversions, DeliverMin properly formatted via formatAmount()
+- **📚 Documentation**: Added slippage protection examples with tfPartialPayment flag documentation and configuration guide
 
 ### October 15, 2025 - Advanced Routing & Metrics (V2)
 - **🔀 Hybrid AMM→CLOB Routes**: Added two-leg combinations (AMM→CLOB, CLOB→AMM) for optimal multi-venue execution

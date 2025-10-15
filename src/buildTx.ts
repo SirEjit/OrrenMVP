@@ -55,6 +55,7 @@ function formatAmount(currency: Currency, amount: string): string | { currency: 
   };
 }
 
+const TF_PARTIAL_PAYMENT = 0x00020000;
 const TF_FILL_OR_KILL = 0x00000004;
 
 function calculateMinOut(expectedOut: string, options?: BuildTransactionOptions): string {
@@ -113,6 +114,7 @@ export function buildTransaction(
     if (options?.minOut || options?.slippageBps) {
       const minOut = calculateMinOut(quote.expected_out, options);
       tx.DeliverMin = formatAmount(request.destination_asset, minOut);
+      tx.Flags = TF_PARTIAL_PAYMENT;
     }
     
     return tx;
