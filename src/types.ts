@@ -10,7 +10,7 @@ export interface QuoteRequest {
 }
 
 export interface QuoteResponse {
-  route_type: 'amm' | 'clob';
+  route_type: 'amm' | 'clob' | 'xrp-bridge';
   expected_out: string;
   latency_ms: number;
   trust_tier: 'high' | 'medium' | 'low';
@@ -20,6 +20,9 @@ export interface QuoteResponse {
     taker_gets?: string;
     taker_pays?: string;
     quality?: string;
+    trading_fee?: string;
+    leg1?: QuoteResponse;
+    leg2?: QuoteResponse;
   };
 }
 
@@ -43,4 +46,5 @@ export interface AMMInfo {
     issuer: string;
     value: string;
   };
+  trading_fee?: number;
 }

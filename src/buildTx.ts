@@ -47,7 +47,29 @@ export function buildTransaction(
   quote: QuoteResponse,
   request: QuoteRequest,
   userAddress: string
-): TransactionBlueprint {
+): TransactionBlueprint | TransactionBlueprint[] {
+  if (quote.route_type === 'xrp-bridge') {
+    if (!quote.metadata?.leg1 || !quote.metadata?.leg2) {
+      throw new Error('XRP bridge route missing leg information');
+    }
+
+    const XRP_CURRENCY: Currency = { currency: 'XRP' };
+    
+    const tx1 = buildTransaction(
+      quote.metadata.leg1,
+      { source_asset: request.source_asset, destination_asset: XRP_CURRENCY, amount: request.amount },
+      userAddress
+    );
+    
+    const tx2 = buildTransaction(
+      quote.metadata.leg2,
+      { source_asset: XRP_CURRENCY, destination_asset: request.destination_asset, amount: quote.metadata.leg1.expected_out },
+      userAddress
+    );
+
+    return [tx1 as TransactionBlueprint, tx2 as TransactionBlueprint];
+  }
+
   if (quote.route_type === 'amm') {
     return {
       TransactionType: 'Payment',

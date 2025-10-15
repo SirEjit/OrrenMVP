@@ -1,3 +1,4 @@
+import Decimal from 'decimal.js-light';
 import { getOrderBook } from '../xrplClient.js';
 import { Currency, QuoteResponse, OrderBookOffer } from '../types.js';
 import { LRUCache } from '../cache.js';
@@ -5,11 +6,11 @@ import { config } from '../config.js';
 
 const clobCache = new LRUCache<QuoteResponse>(config.cache.maxSize, config.cache.ttlMs);
 
-function normalizeAmount(amount: string | { value: string }): number {
+function normalizeAmount(amount: string | { value: string }): Decimal {
   if (typeof amount === 'string') {
-    return parseFloat(amount) / 1_000_000;
+    return new Decimal(amount).div(1_000_000);
   }
-  return parseFloat(amount.value);
+  return new Decimal(amount.value);
 }
 
 export async function getCLOBQuote(
@@ -30,21 +31,21 @@ export async function getCLOBQuote(
   const takerGetsAmount = normalizeAmount(bestOffer.TakerGets);
   const takerPaysAmount = normalizeAmount(bestOffer.TakerPays);
   
-  const inputAmount = parseFloat(amount);
-  const rate = takerGetsAmount / takerPaysAmount;
-  const expectedOut = inputAmount * rate;
+  const inputAmount = new Decimal(amount);
+  const rate = takerGetsAmount.div(takerPaysAmount);
+  const expectedOut = inputAmount.mul(rate);
 
   const latencyMs = Date.now() - startTime;
 
   const quote: QuoteResponse = {
     route_type: 'clob',
-    expected_out: expectedOut.toFixed(6),
+    expected_out: expectedOut.toFixed(),
     latency_ms: latencyMs,
     trust_tier: 'medium',
     score: 0,
     metadata: {
-      taker_gets: takerGetsAmount.toString(),
-      taker_pays: takerPaysAmount.toString(),
+      taker_gets: takerGetsAmount.toFixed(),
+      taker_pays: takerPaysAmount.toFixed(),
       quality: bestOffer.quality,
     },
   };

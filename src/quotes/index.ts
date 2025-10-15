@@ -1,24 +1,30 @@
 import { getAMMQuote } from './amm.js';
 import { getCLOBQuote } from './clob.js';
+import { getXRPBridgeQuote } from './xrpBridge.js';
 import { QuoteRequest, QuoteResponse } from '../types.js';
 import { calculateScore } from '../scoring.js';
 
 export async function getAllQuotes(request: QuoteRequest): Promise<QuoteResponse[]> {
   const quotes: QuoteResponse[] = [];
 
-  const [ammQuote, clobQuote] = await Promise.all([
+  const isIouToIou = request.source_asset.currency !== 'XRP' && request.destination_asset.currency !== 'XRP';
+
+  const quotePromises = [
     getAMMQuote(request.source_asset, request.destination_asset, request.amount),
     getCLOBQuote(request.source_asset, request.destination_asset, request.amount),
-  ]);
+  ];
 
-  if (ammQuote) {
-    ammQuote.score = calculateScore(ammQuote);
-    quotes.push(ammQuote);
+  if (isIouToIou) {
+    quotePromises.push(getXRPBridgeQuote(request.source_asset, request.destination_asset, request.amount));
   }
 
-  if (clobQuote) {
-    clobQuote.score = calculateScore(clobQuote);
-    quotes.push(clobQuote);
+  const results = await Promise.all(quotePromises);
+
+  for (const quote of results) {
+    if (quote) {
+      quote.score = calculateScore(quote);
+      quotes.push(quote);
+    }
   }
 
   quotes.sort((a, b) => b.score - a.score);

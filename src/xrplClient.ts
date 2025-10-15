@@ -54,6 +54,7 @@ export async function getAMMInfo(
       amount: amm.amount,
       amount2: amm.amount2,
       lp_token: amm.lp_token,
+      trading_fee: amm.trading_fee,
     };
   } catch (error) {
     return null;
