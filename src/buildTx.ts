@@ -1,4 +1,4 @@
-import { QuoteResponse, QuoteRequest } from './types.js';
+import { QuoteResponse, QuoteRequest, Currency } from './types.js';
 
 export interface TransactionBlueprint {
   TransactionType: string;
@@ -26,6 +26,23 @@ export interface TransactionBlueprint {
   };
 }
 
+function formatAmount(currency: Currency, amount: string): string | { currency: string; issuer: string; value: string } {
+  if (currency.currency === 'XRP') {
+    const drops = Math.floor(parseFloat(amount) * 1_000_000).toString();
+    return drops;
+  }
+  
+  if (!currency.issuer) {
+    throw new Error(`Issued currency ${currency.currency} requires an issuer`);
+  }
+  
+  return {
+    currency: currency.currency,
+    issuer: currency.issuer,
+    value: amount,
+  };
+}
+
 export function buildTransaction(
   quote: QuoteResponse,
   request: QuoteRequest,
@@ -35,18 +52,8 @@ export function buildTransaction(
     return {
       TransactionType: 'Payment',
       Account: userAddress,
-      Amount: quote.metadata?.amm_account
-        ? {
-            currency: request.destination_asset.currency,
-            issuer: request.destination_asset.issuer || '',
-            value: quote.expected_out,
-          }
-        : quote.expected_out,
-      SendMax: {
-        currency: request.source_asset.currency,
-        issuer: request.source_asset.issuer || '',
-        value: request.amount,
-      },
+      Amount: formatAmount(request.destination_asset, quote.expected_out),
+      SendMax: formatAmount(request.source_asset, request.amount),
       Destination: quote.metadata?.amm_account || userAddress,
     };
   }
@@ -54,15 +61,7 @@ export function buildTransaction(
   return {
     TransactionType: 'OfferCreate',
     Account: userAddress,
-    TakerGets: {
-      currency: request.destination_asset.currency,
-      issuer: request.destination_asset.issuer || '',
-      value: quote.expected_out,
-    },
-    TakerPays: {
-      currency: request.source_asset.currency,
-      issuer: request.source_asset.issuer || '',
-      value: request.amount,
-    },
+    TakerGets: formatAmount(request.destination_asset, quote.expected_out),
+    TakerPays: formatAmount(request.source_asset, request.amount),
   };
 }
