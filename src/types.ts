@@ -15,6 +15,8 @@ export interface QuoteResponse {
   latency_ms: number;
   trust_tier: 'high' | 'medium' | 'low';
   score: number;
+  source?: 'ORREN' | 'NATIVE' | 'MOCK';
+  guarantee?: 'available' | 'unavailable';
   metadata?: {
     amm_account?: string;
     taker_gets?: string;

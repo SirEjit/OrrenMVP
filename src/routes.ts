@@ -38,6 +38,8 @@ export async function registerRoutes(app: FastifyInstance) {
           user_address
         );
         if (comparison) {
+          quotes[0].source = 'ORREN';
+          quotes[0].guarantee = 'available';
           quotes[0].native_comparison = comparison;
           
           const feeResult = calculateDynamicFee(
@@ -53,6 +55,9 @@ export async function registerRoutes(app: FastifyInstance) {
             native_out: feeResult.native_out,
             improvement_bps: feeResult.improvement_bps,
           };
+        } else {
+          quotes[0].source = 'MOCK';
+          quotes[0].guarantee = 'unavailable';
         }
       }
 
@@ -99,6 +104,8 @@ export async function registerRoutes(app: FastifyInstance) {
       
       let feeInfo;
       if (comparison) {
+        bestQuote.source = 'ORREN';
+        bestQuote.guarantee = 'available';
         bestQuote.native_comparison = comparison;
         
         const feeResult = calculateDynamicFee(
@@ -120,6 +127,9 @@ export async function registerRoutes(app: FastifyInstance) {
           fee_bps: feeResult.fee_bps,
           net_out: feeResult.net_out,
         };
+      } else {
+        bestQuote.source = 'MOCK';
+        bestQuote.guarantee = 'unavailable';
       }
 
       const tx = buildTransaction(
